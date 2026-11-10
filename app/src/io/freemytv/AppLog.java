@@ -9,4 +9,8 @@ final class AppLog {
     static void w(String message) {
         Log.i("FreeMyTV", message);
     }
+
+    static void i(String message) {
+        Log.i("FreeMyTV", message);
+    }
 }

@@ -51,18 +51,12 @@ final class RemoteKeys {
      * app is picked. By model name, since the other buttons' codes were not checked on this remote.
      */
     static final boolean XIAOMI_PATCHWALL_ONLY = is("Xiaomi") && Build.MODEL.equals("MiTV-AXSO2");
+    static final boolean XIAOMI_AFKR0 = is("Xiaomi") && (Build.MODEL.equals("MiTV-AFKR0") || Build.MODEL.equals("MiTV-MZTU0") || Build.MODEL.equals("MiTV-MOOQ0"));
     /**
      * Xiaomi TVs (models MiTV-M…; MiTV-MSSP3, MediaTek, Android TV 9 tested). Not the Mi Box or Mi TV Stick, the slowest
      * devices we run on, whose remotes have a Home button; Formovie's Xiaomi projectors have their own remote.
      */
-    static final boolean XIAOMI = is("Xiaomi") && !FORMOVIE && (Build.MODEL.startsWith("MiTV-M") || XIAOMI_PATCHWALL_ONLY);
-    /**
-     * Xiaomi's MiTV-AFKR0 (jaws, Amlogic, Android TV 11 tested), whose remote (Xiaomi RC,
-     * Vendor_2717_Product_32b9.kl) has the buttons marked "Mi TV+", Netflix, Prime Video and YouTube. YouTube is
-     * BUTTON_16 here, not BUTTON_3 as on the MiTV-M… remotes, and there is no Rutube button to clash with it. Its
-     * presses come one at a time, so no burst as on the other Xiaomi remotes.
-     */
-    static final boolean XIAOMI_AFKR0 = is("Xiaomi") && Build.MODEL.equals("MiTV-AFKR0");
+    static final boolean XIAOMI = is("Xiaomi") && !FORMOVIE && !XIAOMI_AFKR0 && (Build.MODEL.startsWith("MiTV-M") || XIAOMI_PATCHWALL_ONLY);
     /**
      * Philips' Google TV models (TP Vision; 65OLED910, "Philips Google TV TA5", Android 14, #437), whose remote sends TP
      * Vision's own key codes. org.droidtv.GlobalKey hands the Settings button to Google TV's home app (its dashboard),
@@ -91,8 +85,7 @@ final class RemoteKeys {
     /** The key service is on only where the filter is safe, and while a button opens something (else it has no work). */
     static boolean serviceWanted() {
         if (!supported() || !FILTER_SAFE) return false;
-        for (int key : Prefs.KEYS) if (!Prefs.keyApp(key).isEmpty()) return true;
-        return false;
+        return true;
     }
 
     private static boolean is(String maker) {
@@ -118,6 +111,24 @@ final class RemoteKeys {
                 || keyCode == KeyEvent.KEYCODE_BUTTON_9 || keyCode == KeyEvent.KEYCODE_BUTTON_2
                 || keyCode == KeyEvent.KEYCODE_BUTTON_15)) {
             keyCode = Prefs.sonyKey(e.getScanCode());
+        }
+        if (XIAOMI_AFKR0 && keyCode == Prefs.KEY_YOUTUBE) {
+            keyCode = Prefs.KEY_XIAOMI_YOUTUBE;
+        }
+        if (keyCode == KeyEvent.KEYCODE_ALL_APPS || keyCode == 284) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                Intent intent = new Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_HOME)
+                        .setPackage(c.getPackageName())
+                        .putExtra(HomeActivity.EXTRA_ALL_APPS, true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    c.startActivity(intent);
+                } catch (Exception ex) {
+                    AppLog.w("failed to open all apps: " + ex.getMessage());
+                }
+            }
+            return true;
         }
         boolean ours = false;
         for (int key : Prefs.KEYS) ours |= key == keyCode;

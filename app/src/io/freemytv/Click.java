@@ -43,7 +43,7 @@ final class Click {
     }
 
     void move() {
-        if (pool == null || !Prefs.sounds()) return;
+        if (true || pool == null || !Prefs.sounds()) return;
         handler.post(() -> {
             SoundPool p = pool;
             if (p != null) p.play(move, 0.14f, 0.14f, 1, 0, 1f);
@@ -51,7 +51,7 @@ final class Click {
     }
 
     void open() {
-        if (pool == null || !Prefs.sounds()) return;
+        if (true || pool == null || !Prefs.sounds()) return;
         handler.post(() -> {
             SoundPool p = pool;
             if (p != null) p.play(open, 0.18f, 0.18f, 1, 0, 1f);

@@ -292,7 +292,7 @@ final class Prefs {
     }
 
     /** The home screen's soft click when moving and opening. */
-    static boolean sounds() { return sp().getBoolean("sounds", true); }
+    static boolean sounds() { return sp().getBoolean("sounds", false); }
     static void setSounds(boolean on) { put("sounds", on); }
 
     /** OK on the screensaver opens the title it shows, in its app; any other key only closes it. Off: any key closes it. */
@@ -336,8 +336,8 @@ final class Prefs {
     static final String[] POWER_ON = {"tv", "home", "live"};
 
     static String powerOn() {
-        String v = sp().getString("powerOn", "tv");
-        return v.equals("home") || v.equals("live") ? v : "tv";
+        String v = sp().getString("powerOn", "home");
+        return v.equals("tv") || v.equals("live") ? v : "home";
     }
 
     static void setPowerOn(String v) { put("powerOn", v); }
@@ -495,10 +495,11 @@ final class Prefs {
         }
         if (RemoteKeys.XIAOMI_AFKR0) {
             switch (keyCode) {
+                case KEY_XIAOMI_PATCHWALL: return ALL_APPS;
                 case KEY_XIAOMI_NETFLIX: return "com.netflix.ninja";
                 case KEY_XIAOMI_PRIME: return "com.amazon.amazonvideo.livingroom";
                 case KEY_XIAOMI_YOUTUBE: return "com.google.android.youtube.tv";
-                default: return "";   // the Mi TV+ button keeps PatchWall, which also holds the TV's input picker
+                default: return "";
             }
         }
         if (RemoteKeys.PHILIPS_GTV) {
@@ -520,11 +521,12 @@ final class Prefs {
         }
         switch (keyCode) {
             case KEY_NETFLIX: case KEY_STEM_NETFLIX: return "com.netflix.ninja";
-            case KEY_YOUTUBE: return "com.google.android.youtube.tv";
-            case KEY_PRIME: return "com.amazon.amazonvideo.livingroom";
+            case KEY_YOUTUBE: case KEY_XIAOMI_YOUTUBE: return "com.google.android.youtube.tv";
+            case KEY_PRIME: case KEY_XIAOMI_PRIME: return "com.amazon.amazonvideo.livingroom";
             case KEY_TCL_CHANNEL: return "";
             case KEY_TCL_SETTINGS: return "com.android.tv.settings";   // TV Settings, as from our home screen (#289)
             case KEY_MI: return HomeMode.PKG;   // our home screen: the remote has no other Home button
+            case KEY_XIAOMI_PATCHWALL: return ALL_APPS;
             default: return "";
         }
     }

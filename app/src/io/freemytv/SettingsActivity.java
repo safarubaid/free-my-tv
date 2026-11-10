@@ -202,6 +202,7 @@ public class SettingsActivity extends Activity {
         private List<String[]> watchApps;
         private int watchScan, watchHiddenCount;
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
+        private final GlassSurface glassSurface = new GlassSurface();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
         private boolean hasKey;
         private int screen = MAIN, focus;
@@ -670,21 +671,24 @@ public class SettingsActivity extends Activity {
             return y + (Recs.watchmodeKey().isEmpty() ? 78 : 108) * k;
         }
 
-        /** List row: no background; focused, white with a shadow (the Apple TV focus). Returns how focused it is. */
+        /** List row: Liquid Glass style. At rest: translucent glass panel with refraction edge; focused: glowing glass with elevation shadow. */
         private float drawRowBackground(Canvas c, int i) {
             float f = Ui.clamp(pop[i].value);
+            float s = 1 + 0.03f * f;
+            float cx = rowRect.centerX(), cy = rowRect.centerY();
+            tmp.set(cx - rowRect.width() * s / 2, cy - rowRect.height() * s / 2, cx + rowRect.width() * s / 2, cy + rowRect.height() * s / 2);
+            float r = 18 * k * s;
             if (f > 0.01f) {
-                float s = 1 + 0.02f * f;
-                float cx = rowRect.centerX(), cy = rowRect.centerY();
-                tmp.set(cx - rowRect.width() * s / 2, cy - rowRect.height() * s / 2, cx + rowRect.width() * s / 2, cy + rowRect.height() * s / 2);
-                float r = 18 * k * s;
                 tmp.offset(0, 10 * k * f);
-                shadow.setColor(Ui.alpha(0xFF000000, 0.4f * f));
+                shadow.setColor(Ui.alpha(0xFF000000, 0.45f * f));
                 c.drawRoundRect(tmp, r, r, shadow);
                 tmp.offset(0, -10 * k * f);
                 white.setAlpha(Math.round(255 * f));
                 c.drawRoundRect(tmp, r, r, white);
+                glassSurface.drawCardHighlight(c, tmp, r, f, k);
                 rowRect.set(tmp);
+            } else {
+                glassSurface.drawCard(c, tmp, r, 0, true, false, k);
             }
             return f;
         }

@@ -23,6 +23,7 @@
          granted at install; from 12 it is asked for when Status icons is turned on (and only the icon needs it). -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.READ_LOGS" />
 
     <!-- Android 11+: without this list the app can't "see" the other apps (getLeanbackLaunchIntentForPackage
          returns null). The shelf and streaming apps, the live TV apps and, through the <intent>, every TV app
@@ -131,7 +132,7 @@
         <activity
             android:name=".QuickSettingsActivity"
             android:process=":home"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleTask"
             android:taskAffinity="io.freemytv.quick"
             android:excludeFromRecents="true"
@@ -181,7 +182,7 @@
         <activity
             android:name=".QuickPanelActivity"
             android:process=":home"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleTask"
             android:taskAffinity="io.freemytv.panel"
             android:excludeFromRecents="true"
@@ -277,5 +278,18 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".PrayerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.freemytv.PRAYER_ALARM" />
+                <action android:name="io.freemytv.TEST_PRAYER_ALARM" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".PrayerService"
+            android:exported="false" />
     </application>
 </manifest>

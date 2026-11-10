@@ -21,27 +21,27 @@ import android.widget.Toast;
 
 /** A small remote-friendly panel: no images, network requests, blur or continuously running animations. */
 public final class QuickSettingsActivity extends Activity {
-    private static final int INK = 0xffedf3fc, PANEL = 0xff101a29;
-    private static final int FOCUS = 0xffdceaff, FOCUS_INK = 0xff122540;
+    private static final int INK = 0xFFF0F0F5, PANEL = 0xD8141418;
+    private static final int FOCUS = 0x55FFFFFF, FOCUS_INK = 0xFFFFFFFF;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-        w.setDimAmount(0.15f);
+        w.setDimAmount(0.25f);
         w.setGravity(Gravity.RIGHT | Gravity.TOP);
-        w.setBackgroundDrawable(shape(PANEL, 16));
+        w.setBackgroundDrawable(glassShape(PANEL, 24, 0x35FFFFFF, 1.2f));
         setFinishOnTouchOutside(true);
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(16), dp(20), dp(16), dp(16));
-        TextView title = text(Ui.tr("Quick Settings"), 18, INK);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        panel.setPadding(dp(18), dp(22), dp(18), dp(18));
+        TextView title = text(Ui.tr("Quick Settings"), 19, INK);
+        title.setTypeface(Typeface.create("sans-serif-semibold", Typeface.NORMAL));
         title.setMaxLines(2);
         LinearLayout.LayoutParams heading = new LinearLayout.LayoutParams(-1, -2);
         heading.leftMargin = dp(12);
-        heading.bottomMargin = dp(12);
+        heading.bottomMargin = dp(14);
         panel.addView(title, heading);
 
         String[] labels = {Ui.tr("Picture"), Ui.tr("Sound"), Ui.tr("Inputs"), Ui.tr("Wi-Fi"),
@@ -111,10 +111,13 @@ public final class QuickSettingsActivity extends Activity {
         return t;
     }
 
-    private GradientDrawable shape(int color, int radius) {
+    private GradientDrawable glassShape(int color, int radius, int strokeColor, float strokeWidth) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(dp(radius));
+        if (strokeColor != 0 && strokeWidth > 0) {
+            drawable.setStroke(dp(strokeWidth), strokeColor);
+        }
         return drawable;
     }
 
@@ -123,11 +126,12 @@ public final class QuickSettingsActivity extends Activity {
             super(QuickSettingsActivity.this);
             setOrientation(HORIZONTAL);
             setGravity(Gravity.CENTER_VERTICAL);
-            setPadding(dp(12), 0, dp(12), 0);
+            setPadding(dp(14), 0, dp(14), 0);
             setFocusable(true);
             setClickable(true);
             setContentDescription(label);
-            GradientDrawable normal = shape(0, 10), focused = shape(FOCUS, 10);
+            GradientDrawable normal = glassShape(0x18FFFFFF, 12, 0x1EFFFFFF, 1f);
+            GradientDrawable focused = glassShape(0x55FFFFFF, 12, 0xEEFFFFFF, 1.5f);
             setBackground(normal);
             Glyph glyph = new Glyph(getContext(), icon);
             addView(glyph, new LinearLayout.LayoutParams(dp(22), dp(22)));
@@ -143,6 +147,10 @@ public final class QuickSettingsActivity extends Activity {
                 title.setTextColor(hasFocus ? FOCUS_INK : INK);
                 glyph.color = hasFocus ? FOCUS_INK : INK;
                 glyph.invalidate();
+                animate().scaleX(hasFocus ? 1.05f : 1.0f)
+                        .scaleY(hasFocus ? 1.05f : 1.0f)
+                        .setDuration(180)
+                        .start();
             });
         }
     }

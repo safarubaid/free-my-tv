@@ -183,6 +183,39 @@ final class Adb implements Closeable {
         }
     }
 
+    interface LineListener {
+        void onLine(String line);
+    }
+
+    void streamShell(String command, LineListener listener) throws IOException {
+        socket.setSoTimeout(0);
+        int local = nextLocalId++;
+        send(OPEN, local, 0, ("shell:" + command + "\0").getBytes(StandardCharsets.UTF_8));
+        int remote = 0;
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        while (true) {
+            Message m = read();
+            if (m.arg1 != local) continue;
+            if (m.command == OKAY) {
+                remote = m.arg0;
+            } else if (m.command == WRTE) {
+                for (byte b : m.data) {
+                    if (b == '\n') {
+                        listener.onLine(buffer.toString("UTF-8"));
+                        buffer.reset();
+                    } else if (b != '\r') {
+                        buffer.write(b);
+                    }
+                }
+                send(OKAY, local, m.arg0, null);
+            } else if (m.command == CLSE) {
+                if (remote == 0 && m.arg0 == 0) throw new IOException(Ui.tr("ADB refused the command"));
+                send(CLSE, local, m.arg0, null);
+                return;
+            }
+        }
+    }
+
     @Override public void close() {
         try { socket.close(); } catch (IOException ignored) {}
     }

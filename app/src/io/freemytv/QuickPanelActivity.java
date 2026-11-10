@@ -67,7 +67,7 @@ public class QuickPanelActivity extends Activity {
         DisplayMetrics dm = getResources().getDisplayMetrics();
         float k = dm.widthPixels / 1920f;
         WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.gravity = Gravity.TOP | Gravity.END;
         lp.x = Math.round(MARGIN * k);
         lp.y = Math.round(MARGIN * k);
         lp.width = Math.round(W * k);
@@ -81,19 +81,29 @@ public class QuickPanelActivity extends Activity {
 
     private Tile[] tiles() {
         return new Tile[] {
-            new Tile(Ui.tr("Inputs"), "hdmi", 0xFF30B0C7),
+            new Tile(Ui.tr("Inputs"), "hdmi", 0xFF5E5CE6),
             new Tile(Ui.tr("Display"), "tv_settings", 0xFFFF9F0A,
+                    new Intent().setClassName(TV_SETTINGS, "com.xiaomi.gtv.settings.display.picture.MiPictureActivity"),
                     new Intent(Settings.ACTION_DISPLAY_SETTINGS).setPackage(TV_SETTINGS),
                     new Intent(Settings.ACTION_DISPLAY_SETTINGS)),
             new Tile(Ui.tr("Sound"), "speaker", 0xFFFF375F,
+                    new Intent().setClassName(TV_SETTINGS, "com.xiaomi.gtv.settings.display.sound.MiSoundActivity"),
                     new Intent("com.android.tv.action.VIEW_SOUND_SETTINGS").setPackage(TV_SETTINGS),
                     new Intent(Settings.ACTION_SOUND_SETTINGS)),
-            new Tile(Ui.tr("Network"), "wifi", 0xFF0A84FF, new Intent(Settings.ACTION_WIFI_SETTINGS)),
-            new Tile(Ui.tr("Bluetooth"), "bluetooth", 0xFF3F7CFF,
-                    new Intent("com.android.tv.settings.DEVICES").setPackage(TV_SETTINGS),
+            new Tile(Ui.tr("Network"), "wifi", 0xFF0A84FF,
+                    new Intent().setClassName(TV_SETTINGS, "com.android.tv.settings.connectivity.NetworkActivity"),
+                    new Intent(Settings.ACTION_WIFI_SETTINGS)),
+            new Tile(Ui.tr("Bluetooth"), "bluetooth", 0xFF007AFF,
+                    new Intent("android.settings.SLICE_SETTINGS")
+                            .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general"),
+                    new Intent("android.settings.HALF_SCREEN_SLICE_SETTINGS")
+                            .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general"),
+                    new Intent().setClassName(TV_SETTINGS, "com.android.tv.settings.MainSettings"),
                     new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)),
             new Tile(Ui.tr("Accessibility"), "accessibility", 0xFF30D158, new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
-            new Tile(Ui.tr("Settings"), "settings", 0xFF8E8E9A, new Intent(Settings.ACTION_SETTINGS)),
+            new Tile(Ui.tr("Settings"), "settings", 0xFF8E8E93,
+                    new Intent().setClassName(TV_SETTINGS, "com.android.tv.settings.MainSettings"),
+                    new Intent(Settings.ACTION_SETTINGS)),
         };
     }
 
@@ -146,8 +156,8 @@ public class QuickPanelActivity extends Activity {
     }
 
     private final class PanelView extends View {
-        private static final float PAD = 40, GAP = 14, TILE_H = 132, GRID_TOP = 184, ROW_H = 76, ROW_GAP = 10,
-                CARD_R = 46, TILE_R = 30, CHIP_R = 25, SYMBOL = 24;
+        private static final float PAD = 36, GAP = 14, TILE_H = 126, GRID_TOP = 176, ROW_H = 74, ROW_GAP = 10,
+                CARD_R = 38, TILE_R = 24, CHIP_R = 24, SYMBOL = 24;
         private static final int ROWS_VISIBLE = 6;
         /** TalkBack's ids: a tile is its index + 1, an Inputs row ROW_IDS + its index + 1. */
         private static final int ROW_IDS = 1000;
@@ -166,7 +176,7 @@ public class QuickPanelActivity extends Activity {
         private final Spring page = new Spring(0.4f, 0.9f, 0);
         private long lastFrame;
 
-        // The home screen's look: white glass with dark ink by day, smoked glass with white ink at night.
+        // Apple Liquid Glass: smoked obsidian glass with white ink.
         private final boolean night;
         private final int ink, focusInk, tileFill;
         private final String inputsTitle = Ui.tr("Inputs"), noInputs = Ui.tr("No inputs");
@@ -176,11 +186,12 @@ public class QuickPanelActivity extends Activity {
 
         private final Paint date, clock, label, rowLabel, title, empty;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint sheenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint layer = new Paint(), atop = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF rect = new RectF(), card = new RectF();
-        private LinearGradient tint, sheen, cardRim, tileRim, lens;
+        private final RectF rect = new RectF(), card = new RectF(), chipRect = new RectF(), tmpRect = new RectF();
+        private LinearGradient tint, sheen, cardRim, tileRim, tileSheen, lens, lensSheen;
         private RadialGradient[] glows;
-        private final float[] glowX = {0.2f, 0.95f, 0.3f}, glowY = {0.15f, 0.55f, 0.95f};
+        private final float[] glowX = {0.18f, 0.85f, 0.25f}, glowY = {0.15f, 0.50f, 0.88f};
         // Each chip color's gradient, made once and looked up by color (no boxing in onDraw).
         private final int[] chipColor = new int[16];
         private final LinearGradient[] chipShader = new LinearGradient[16];
@@ -209,16 +220,17 @@ public class QuickPanelActivity extends Activity {
             super(c);
             this.k = k;
             this.tiles = tiles;
+            sheenPaint.setStyle(Paint.Style.FILL);
             night = HomeData.get(c).isNight(System.currentTimeMillis());
-            ink = night ? 0xFFFFFFFF : 0xFF1D1D1F;
-            focusInk = night ? 0xFF1D1D1F : 0xFFFFFFFF;
-            tileFill = night ? 0x17FFFFFF : 0x0D000000;
-            date = Ui.text(Ui.medium, 24 * k, Ui.alpha(ink, 0.8f));
-            clock = Ui.numbers(Ui.displaySemibold, 80 * k, ink);
-            label = Ui.text(Ui.semibold, 24 * k, ink);
-            rowLabel = Ui.text(Ui.semibold, 26 * k, ink);
-            title = Ui.text(Ui.semibold, 30 * k, ink);
-            empty = Ui.text(Ui.medium, 24 * k, Ui.alpha(ink, 0.7f));
+            ink = 0xFFFFFFFF;
+            focusInk = 0xFFFFFFFF;
+            tileFill = night ? 0x20FFFFFF : 0x0E000000;
+            date = Ui.text(Ui.medium, 22 * k, 0xB3FFFFFF);
+            clock = Ui.numbers(Ui.displaySemibold, 74 * k, 0xFFFFFFFF);
+            label = Ui.text(Ui.semibold, 23 * k, 0xFFFFFFFF);
+            rowLabel = Ui.text(Ui.semibold, 24 * k, 0xFFFFFFFF);
+            title = Ui.text(Ui.semibold, 28 * k, 0xFFFFFFFF);
+            empty = Ui.text(Ui.medium, 22 * k, 0x99FFFFFF);
             rim.setStyle(Paint.Style.STROKE);
             setFocusable(true);
             spoken = new Spoken(this, new Spoken.Source() {
@@ -271,28 +283,34 @@ public class QuickPanelActivity extends Activity {
 
         @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
             card.set(0, 0, w, h);
-            // ~95% opaque: with no blur behind it, the glass has to hold the text on its own, over a white or black screen.
-            tint = night ? new LinearGradient(0, 0, 0, h, 0xF22C2C30, 0xF71C1C1E, Shader.TileMode.CLAMP)
-                    : new LinearGradient(0, 0, 0, h, 0xF7FBFBFD, 0xF2EBEBF0, Shader.TileMode.CLAMP);
-            sheen = new LinearGradient(0, 0, 0, h * 0.42f, night ? 0x1FFFFFFF : 0x66FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
-            cardRim = new LinearGradient(0, 0, w, h, new int[] {0xB3FFFFFF, 0x1AFFFFFF, 0x14FFFFFF, 0x66FFFFFF},
-                    new float[] {0, 0.35f, 0.65f, 1}, Shader.TileMode.CLAMP);
-            tileRim = night ? new LinearGradient(0, 0, 0, TILE_H * k, 0x40FFFFFF, 0x0AFFFFFF, Shader.TileMode.CLAMP)
-                    : new LinearGradient(0, 0, 0, TILE_H * k, 0x0A000000, 0x1A000000, Shader.TileMode.CLAMP);
-            lens = night ? new LinearGradient(0, 0, 0, TILE_H * k, 0xFFFFFFFF, 0xFFE4E8F4, Shader.TileMode.CLAMP)
-                    : new LinearGradient(0, 0, 0, TILE_H * k, 0xFF3A3A3C, 0xFF1D1D1F, Shader.TileMode.CLAMP);
-            // Faint light resting in the glass: it doesn't drift, the panel draws only while something moves.
+            tint = night ? new LinearGradient(0, 0, 0, h, 0xEA1B1B22, 0xF2121216, Shader.TileMode.CLAMP)
+                    : new LinearGradient(0, 0, 0, h, 0xF2ECECF2, 0xF5DFDFE6, Shader.TileMode.CLAMP);
+            sheen = new LinearGradient(0, 0, 0, h * 0.28f,
+                    new int[] {night ? 0x38FFFFFF : 0x60FFFFFF, night ? 0x12FFFFFF : 0x20FFFFFF, 0x00FFFFFF},
+                    new float[] {0f, 0.45f, 1f}, Shader.TileMode.CLAMP);
+            cardRim = new LinearGradient(0, 0, w, h,
+                    new int[] {0x75FFFFFF, 0x2BFFFFFF, 0x12FFFFFF, 0x44FFFFFF},
+                    new float[] {0f, 0.35f, 0.7f, 1f}, Shader.TileMode.CLAMP);
+            tileRim = new LinearGradient(0, 0, 0, TILE_H * k, 0x38FFFFFF, 0x10FFFFFF, Shader.TileMode.CLAMP);
+            tileSheen = new LinearGradient(0, 0, 0, TILE_H * k * 0.35f,
+                    new int[] {0x24FFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
+                    new float[] {0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
+            lens = new LinearGradient(0, 0, 0, TILE_H * k, 0x58FFFFFF, 0x2CFFFFFF, Shader.TileMode.CLAMP);
+            lensSheen = new LinearGradient(0, 0, 0, TILE_H * k * 0.38f,
+                    new int[] {0x80FFFFFF, 0x25FFFFFF, 0x00FFFFFF},
+                    new float[] {0f, 0.45f, 1f}, Shader.TileMode.CLAMP);
+
             float r = 380 * k;
             glows = new RadialGradient[] {
-                new RadialGradient(0, 0, r, 0x267A4DFF, 0x007A4DFF, Shader.TileMode.CLAMP),
-                new RadialGradient(0, 0, r, 0x2022C4FF, 0x0022C4FF, Shader.TileMode.CLAMP),
-                new RadialGradient(0, 0, r * 0.85f, 0x1AFF3D8B, 0x00FF3D8B, Shader.TileMode.CLAMP),
+                new RadialGradient(0, 0, r, 0x240A84FF, 0x000A84FF, Shader.TileMode.CLAMP),
+                new RadialGradient(0, 0, r, 0x205E5CE6, 0x005E5CE6, Shader.TileMode.CLAMP),
+                new RadialGradient(0, 0, r * 0.85f, 0x18FF375F, 0x00FF375F, Shader.TileMode.CLAMP),
             };
             tileW = (w - 2 * PAD * k - GAP * k) / 2;
             float room = tileW - 44 * k;
             for (int i = 0; i < tiles.length; i++) {
-                label.setTextSize(24 * k);
-                labelSize[i] = 24 * k * Math.min(1, room / Math.max(1, label.measureText(tiles[i].label)));
+                label.setTextSize(23 * k);
+                labelSize[i] = 23 * k * Math.min(1, room / Math.max(1, label.measureText(tiles[i].label)));
             }
             for (int i = 0; i < tiles.length; i++) {
                 tileX[i] = PAD * k + (i % 2) * (tileW + GAP * k);
@@ -303,6 +321,8 @@ public class QuickPanelActivity extends Activity {
 
         @Override protected void onAttachedToWindow() {
             super.onAttachedToWindow();
+            show.target = 1;
+            postOnAnimation(frame);
             tick.run();
             spoken.readAgain();
         }
@@ -371,7 +391,7 @@ public class QuickPanelActivity extends Activity {
 
             float s = Math.max(0, show.value);
             c.save();
-            c.translate(-(1 - s) * (getWidth() + MARGIN * k), 0);
+            c.translate((1 - s) * (getWidth() + MARGIN * k), 0);
             int alpha = Math.round(255 * Math.min(1, s * 1.4f));
             c.saveLayerAlpha(card, alpha);
             drawGlass(c);
@@ -388,11 +408,11 @@ public class QuickPanelActivity extends Activity {
             }
         }
 
-        /** Tinted glass with faint light inside, a sheen at the top and a bright rim. */
+        /** Tinted glass with faint chromatic light inside, a curved sheen at the top and a bright rim. */
         private void drawGlass(Canvas c) {
             float r = CARD_R * k;
             c.saveLayer(card, layer);
-            fill.setAlpha(255);   // a shader is still scaled by the paint's alpha, which the last tile left low
+            fill.setAlpha(255);
             fill.setShader(tint);
             c.drawRoundRect(card, r, r, fill);
             fill.setShader(null);
@@ -401,14 +421,21 @@ public class QuickPanelActivity extends Activity {
                 c.save();
                 c.translate(glowX[i] * w, glowY[i] * h);
                 atop.setShader(glows[i]);
-                c.drawCircle(0, 0, 400 * k, atop);
+                c.drawCircle(0, 0, 380 * k, atop);
                 c.restore();
             }
             atop.setShader(null);
             c.restore();
+
+            // Specular curved top sheen across the top 28%
+            c.save();
+            c.clipRect(card.left, card.top, card.right, card.top + h * 0.28f);
             fill.setShader(sheen);
             c.drawRoundRect(card, r, r, fill);
             fill.setShader(null);
+            c.restore();
+
+            // Directional refractive outer rim
             rim.setStrokeWidth(1.6f * k);
             rim.setShader(cardRim);
             rect.set(card);
@@ -418,11 +445,15 @@ public class QuickPanelActivity extends Activity {
         }
 
         private void drawHeader(Canvas c) {
-            c.drawText(dateText, PAD * k, (PAD + 24) * k, date);
-            c.drawText(clockText, PAD * k - clockBearing, (PAD + 116) * k, clock);
+            c.drawText(dateText, PAD * k, (PAD + 22) * k, date);
+            c.drawText(clockText, PAD * k - clockBearing, (PAD + 110) * k, clock);
+            // Apple-style delicate glass divider
+            rim.setStrokeWidth(1f * k);
+            rim.setColor(0x1FFFFFFF);
+            c.drawLine(PAD * k, (GRID_TOP - 22) * k, getWidth() - PAD * k, (GRID_TOP - 22) * k, rim);
         }
 
-        /** The grid: glass tiles, the lens under the focused one, then each tile's colored chip and label. */
+        /** The grid: glass tiles, the lens under the focused one, then each tile's squircle chip and label. */
         private void drawTiles(Canvas c, float a) {
             int saved = c.saveLayerAlpha(card, Math.round(255 * a));
             c.translate(0, (1 - a) * -24 * k);
@@ -431,6 +462,12 @@ public class QuickPanelActivity extends Activity {
                 rect.set(tileX[i], tileY[i], tileX[i] + tileW, tileY[i] + TILE_H * k);
                 fill.setColor(tileFill);
                 c.drawRoundRect(rect, r, r, fill);
+                c.save();
+                c.clipRect(rect.left, rect.top, rect.right, rect.top + TILE_H * k * 0.35f);
+                sheenPaint.setShader(tileSheen);
+                c.drawRoundRect(rect, r, r, sheenPaint);
+                sheenPaint.setShader(null);
+                c.restore();
                 drawRim(c, rect, r);
             }
             if (!inputsOpen) drawLens(c, r);
@@ -440,11 +477,11 @@ public class QuickPanelActivity extends Activity {
                 float cx = tileX[i] + tileW / 2, cy = tileY[i] + TILE_H * k / 2;
                 c.save();
                 c.scale(1 + 0.03f * lift, 1 + 0.03f * lift, cx, cy);
-                float chipX = tileX[i] + (22 + CHIP_R) * k, chipY = tileY[i] + (22 + CHIP_R) * k;
+                float chipX = tileX[i] + (20 + CHIP_R) * k, chipY = tileY[i] + (20 + CHIP_R) * k;
                 drawChip(c, chipX, chipY, tiles[i].color, tiles[i].symbol, on);
-                label.setColor(mix(ink, focusInk, on));
+                label.setColor(mix(0xCCFFFFFF, 0xFFFFFFFF, on));
                 label.setTextSize(labelSize[i]);
-                c.drawText(tiles[i].label, tileX[i] + 22 * k, tileY[i] + TILE_H * k - 24 * k, label);
+                c.drawText(tiles[i].label, tileX[i] + 20 * k, tileY[i] + TILE_H * k - 22 * k, label);
                 c.restore();
             }
             c.restoreToCount(saved);
@@ -454,13 +491,13 @@ public class QuickPanelActivity extends Activity {
         private void drawInputs(Canvas c, float a) {
             int saved = c.saveLayerAlpha(card, Math.round(255 * a));
             c.translate(0, (1 - a) * 24 * k);
-            c.drawText(inputsTitle, PAD * k, (GRID_TOP + 30) * k, title);
+            c.drawText(inputsTitle, PAD * k, (GRID_TOP + 24) * k, title);
             if (inputs.isEmpty()) {
-                c.drawText(noInputs, PAD * k, (GRID_TOP + 100) * k, empty);
+                c.drawText(noInputs, PAD * k, (GRID_TOP + 90) * k, empty);
                 c.restoreToCount(saved);
                 return;
             }
-            float r = 24 * k, w = getWidth() - 2 * PAD * k;
+            float r = 20 * k, w = getWidth() - 2 * PAD * k;
             int first = firstRow();
             int last = Math.min(inputs.size(), first + ROWS_VISIBLE);
             for (int i = first; i < last; i++) {
@@ -468,6 +505,12 @@ public class QuickPanelActivity extends Activity {
                 rect.set(PAD * k, y, PAD * k + w, y + ROW_H * k);
                 fill.setColor(tileFill);
                 c.drawRoundRect(rect, r, r, fill);
+                c.save();
+                c.clipRect(rect.left, rect.top, rect.right, rect.top + ROW_H * k * 0.40f);
+                sheenPaint.setShader(tileSheen);
+                c.drawRoundRect(rect, r, r, sheenPaint);
+                sheenPaint.setShader(null);
+                c.restore();
                 drawRim(c, rect, r);
             }
             if (inputsOpen) drawLens(c, r);
@@ -475,11 +518,11 @@ public class QuickPanelActivity extends Activity {
                 HomeApps.Item it = inputs.get(i);
                 float y = rowTop(i);
                 float on = nearness(PAD * k, y, w);
-                float dim = it.connected ? 1 : 0.7f;   // still 4.5:1 on the light glass
-                drawChip(c, PAD * k + 46 * k, y + ROW_H * k / 2, it.kind == HomeApps.LIVE_TV ? 0xFFFF9F0A : 0xFF30B0C7,
+                float dim = it.connected ? 1 : 0.7f;
+                drawChip(c, PAD * k + 44 * k, y + ROW_H * k / 2, it.kind == HomeApps.LIVE_TV ? 0xFFFF9F0A : 0xFF5E5CE6,
                         it.symbol != null ? it.symbol : "hdmi", on);
-                rowLabel.setColor(Ui.alpha(mix(ink, focusInk, on), Math.max(dim, on)));
-                c.drawText(it.label, PAD * k + 92 * k, y + ROW_H * k / 2 + Ui.halfCap(rowLabel), rowLabel);
+                rowLabel.setColor(Ui.alpha(mix(0xCCFFFFFF, 0xFFFFFFFF, on), Math.max(dim, on)));
+                c.drawText(it.label, PAD * k + 88 * k, y + ROW_H * k / 2 + Ui.halfCap(rowLabel), rowLabel);
             }
             c.restoreToCount(saved);
         }
@@ -502,8 +545,8 @@ public class QuickPanelActivity extends Activity {
         }
 
         /**
-         * The focus lens: a bright drop of glass that flows to the focused tile, stretching along its way like a
-         * liquid and squashing a little when OK is pressed, with a soft glow of the tile's color around it.
+         * The focus lens: a bright drop of liquid glass that flows to the focused tile, stretching along its way like a
+         * liquid and squashing a little when OK is pressed, with Apple-style accent halo bloom and specular reflection.
          */
         private void drawLens(Canvas c, float radius) {
             float vx = Math.abs(lensX.velocity), vy = Math.abs(lensY.velocity);
@@ -511,13 +554,22 @@ public class QuickPanelActivity extends Activity {
             float w = lensW.value * (1 + stretchX - stretchY * 0.5f) * (1 - 0.04f * press.value);
             float h = lensH.value * (1 + stretchY - stretchX * 0.5f) * (1 - 0.04f * press.value);
             float cx = lensX.value + lensW.value / 2, cy = lensY.value + lensH.value / 2;
-            int accent = inputsOpen ? 0xFF30B0C7 : tiles[focus].color;
+            int accent = inputsOpen ? 0xFF5E5CE6 : tiles[focus].color;
+
+            // 1. Accent color halo bloom (3-tier soft Gaussian expansion)
             for (int i = 3; i >= 1; i--) {
-                float g = i * 7 * k;
+                float g = i * 6 * k;
                 rect.set(cx - w / 2 - g, cy - h / 2 - g, cx + w / 2 + g, cy + h / 2 + g);
-                fill.setColor(Ui.alpha(accent, 0.10f));
+                fill.setColor(Ui.alpha(accent, i == 3 ? 0.04f : (i == 2 ? 0.08f : 0.16f)));
                 c.drawRoundRect(rect, radius + g, radius + g, fill);
             }
+
+            // 2. Soft white lift aura
+            rect.set(cx - w / 2 - 2 * k, cy - h / 2 - 2 * k, cx + w / 2 + 2 * k, cy + h / 2 + 2 * k);
+            fill.setColor(0x20FFFFFF);
+            c.drawRoundRect(rect, radius + 2 * k, radius + 2 * k, fill);
+
+            // 3. Liquid Glass Lens Body
             rect.set(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
             c.save();
             c.translate(0, rect.top);
@@ -526,19 +578,41 @@ public class QuickPanelActivity extends Activity {
             rect.offset(0, -rect.top);
             c.drawRoundRect(rect, radius, radius, fill);
             fill.setShader(null);
-            rim.setStrokeWidth(1.4f * k);
-            rim.setColor(night ? 0xFFFFFFFF : 0x33000000);
+
+            // 4. Specular Top Sheen on the lens
+            c.save();
+            c.clipRect(rect.left, rect.top, rect.right, rect.top + h * 0.40f);
+            sheenPaint.setShader(lensSheen);
+            c.drawRoundRect(rect, radius, radius, sheenPaint);
+            sheenPaint.setShader(null);
+            c.restore();
+
+            // 5. Crisp Refractive Rim on the lens
+            rim.setStrokeWidth(2.0f * k);
+            rim.setColor(0xF0FFFFFF);
             c.drawRoundRect(rect, radius, radius, rim);
             c.restore();
         }
 
-        /** A circle in the tile's color (lighter at the top, like lit glass) with its white symbol. */
+        /** An Apple Liquid Glass squircle chip in the tile's accent color with liquid dome sheen and crisp symbol. */
         private void drawChip(Canvas c, float cx, float cy, int color, String symbol, float on) {
             float r = CHIP_R * k;
+            float squircleR = 14 * k;
+            chipRect.set(cx - r, cy - r, cx + r, cy + r);
+
+            // 1. Accent color bloom behind the chip when focused
+            if (on > 0.01f) {
+                tmpRect.set(chipRect);
+                tmpRect.inset(-4 * k * on, -4 * k * on);
+                fill.setColor(Ui.alpha(color, 0.35f * on));
+                c.drawRoundRect(tmpRect, squircleR + 4 * k * on, squircleR + 4 * k * on, fill);
+            }
+
+            // 2. Base gradient fill (lighter at top for lit glass look)
             LinearGradient lit = null;
             for (int i = 0; i < chips && lit == null; i++) if (chipColor[i] == color) lit = chipShader[i];
             if (lit == null) {
-                lit = new LinearGradient(0, -r, 0, r, mix(color, 0xFFFFFFFF, 0.28f), color, Shader.TileMode.CLAMP);
+                lit = new LinearGradient(0, -r, 0, r, mix(color, 0xFFFFFFFF, 0.25f), color, Shader.TileMode.CLAMP);
                 if (chips < chipColor.length) {
                     chipColor[chips] = color;
                     chipShader[chips++] = lit;
@@ -548,12 +622,25 @@ public class QuickPanelActivity extends Activity {
             c.translate(cx, cy);
             fill.setAlpha(255);
             fill.setShader(lit);
-            c.drawCircle(0, 0, r, fill);
+            rect.set(-r, -r, r, r);
+            c.drawRoundRect(rect, squircleR, squircleR, fill);
             fill.setShader(null);
+
+            // 3. Specular liquid dome sheen across top 48% of squircle
+            c.save();
+            c.clipRect(-r, -r, r, 0);
+            sheenPaint.setColor(Ui.alpha(0xFFFFFFFF, 0.32f + 0.18f * on));
+            c.drawRoundRect(rect, squircleR, squircleR, sheenPaint);
             c.restore();
-            rim.setStrokeWidth(1f * k);
-            rim.setColor(Ui.alpha(0xFFFFFFFF, 0.35f + 0.3f * on));
-            c.drawCircle(cx, cy, r - 0.5f * k, rim);
+
+            // 4. Luminous glass refractive rim
+            rim.setStrokeWidth(1.2f * k);
+            rim.setColor(Ui.alpha(0xFFFFFFFF, 0.45f + 0.35f * on));
+            rect.inset(0.6f * k, 0.6f * k);
+            c.drawRoundRect(rect, Math.max(0, squircleR - 0.6f * k), Math.max(0, squircleR - 0.6f * k), rim);
+            c.restore();
+
+            // 5. Crisp white vector symbol centered in chip
             Symbols.draw(getContext(), c, symbol, cx, cy, SYMBOL * k, 0xFFFFFFFF);
         }
 

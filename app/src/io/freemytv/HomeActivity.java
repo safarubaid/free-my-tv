@@ -75,6 +75,7 @@ public class HomeActivity extends Activity {
         }
         if (home != null) home.resume();
         Updates.tellOnce(this);   // an update the week's check got ready: said once
+        PrayerAlarm.scheduleNext(this);
     }
 
     @Override protected void onPause() {
@@ -117,6 +118,13 @@ public class HomeActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         keyPressed = true;
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_ALL_APPS || code == 284) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                if (home != null) home.showAllApps();
+            }
+            return true;
+        }
         if (RemoteKeys.onKey(this, event)) return true;
         if (home != null && home.onKey(event)) return true;
         return super.dispatchKeyEvent(event);

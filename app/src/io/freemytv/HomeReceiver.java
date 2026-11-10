@@ -14,10 +14,21 @@ public class HomeReceiver extends BroadcastReceiver {
         if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
             HomeMode.bootCheck(context);
             Updates.schedule(context);
+            PrayerAlarm.scheduleNext(context);
+            try {
+                Intent homeIntent = new Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_HOME)
+                        .setPackage(context.getPackageName())
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(homeIntent);
+            } catch (Exception e) {
+                AppLog.w("boot start home failed: " + e.getMessage());
+            }
         } else if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             HomeMode.verify(context);   // app updated: complete Free My TV mode if something is missing
             HomeMode.ensureRemoteService(context, 3_000);
             Updates.schedule(context);
+            PrayerAlarm.scheduleNext(context);
             later(() -> Updates.cleanUp(context));
         } else if (Updates.ACTION.equals(action)) {
             later(() -> Updates.status(context, intent));

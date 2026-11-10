@@ -54,11 +54,14 @@ import android.view.accessibility.AccessibilityNodeProvider;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -216,7 +219,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Paint menuTitlePaint, menuSubPaint, menuOptionPaint;
     private final RectF[] cardRects = new RectF[Recs.MAX_CARDS];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
-    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
+    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote,
+            prayerNamePaint, prayerTimePaint;
     private Shader lightGradient;
     // Continue Watching: the background takes the focused card's colour (worked out once per picture, WatchArt), easing
     // from one to the next. Drawn as a plain fill under a fixed shade, so a colour change creates nothing per frame.
@@ -270,6 +274,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring moveLift = new Spring(0.3f, 0.72f, 0);
     private List<HomeApps.Item> reorderOrigin;
     private final Runnable holdStart = () -> { if (this.okDown && this.holdArmed) hold(); };
+    private final Runnable backHoldStart = () -> {
+        if (this.backDown) {
+            this.backHeld = true;
+            openRecents();
+        }
+    };
 
     // Corner capsule
     private List<HomeApps.Item> statusItems = new ArrayList<>();
@@ -330,7 +340,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int weatherLinePrefs = -1;
     private String weatherLineLanguage = "";
     private long clockMinute = -1;
-    private boolean okDown, backDown;
+    // Flip clock state for aflipclock.com style
+    private String prevSecStr = "", currSecStr = "";
+    private String prevMinStr = "", currMinStr = "";
+    private String prevHourStr = "", currHourStr = "";
+    private long secFlipStart, minFlipStart, hourFlipStart;
+    private long lastClockSec = -1;
+    private static final long SEC_FLIP_MS = 240;
+    private static final long MIN_FLIP_MS = 300;
+    private static final long HOUR_FLIP_MS = 350;
+    private Paint flipSecPaint;
+    private boolean okDown, backDown, backHeld;
     private float touchX, touchY;
     private final RectF hitBox = new RectF();   // the mouse's hit tests (menu rows, Continue Watching cards)
 
@@ -345,6 +365,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Paint shadowDeep = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint halo = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Shadows shadows = new Shadows();
+    private final GlassSurface glassSurface = new GlassSurface();
     private final Matrix imageMatrix = new Matrix();
     private final Paint imageFill = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -687,6 +708,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (h24 != clock24) {   // 12/24 hours changed (the TV's or the Clock row's): the clock and the drawer's times again
             clock24 = h24;
             clockMinute = -1;
+            lastClockSec = -1;
             textPrefs = -1;
         }
         long now = SystemClock.uptimeMillis();
@@ -924,10 +946,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lQuote = Ui.numbers(Ui.regular, 21 * k, L_FAINT);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
-        lDate = Ui.text(Ui.semibold, 34 * k, L_DIM);
-        lClock = Ui.numbers(Ui.light, 200 * k, L_INK);
-        lClock.setLetterSpacing(-0.01f);
-        lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
+        lDate = Ui.text(Ui.medium, 24 * k, 0xFF9F9FA4);
+        lClock = Ui.numbers(Ui.displaySemibold, 190 * k, 0xFFDADADA);
+        lClock.setTextAlign(Paint.Align.CENTER);
+        lWeather = Ui.text(Ui.medium, 30 * k, 0xFF9F9FA4);
+        prayerNamePaint = Ui.text(Ui.medium, 18 * k, 0x95C8E6C9);
+        prayerTimePaint = Ui.numbers(Ui.semibold, 19 * k, 0xFFFFFFFF);
+        flipSecPaint = Ui.numbers(Ui.semibold, 32 * k, 0xFFDADADA);
+        flipSecPaint.setTextAlign(Paint.Align.CENTER);
         lClockQuote = Ui.numbers(Ui.medium, 28 * k, L_DIM);
         lightGradient = tintShade = null;
         buttonPaint = Ui.text(Ui.semibold, 29 * k, INK);
@@ -1050,13 +1076,34 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (clockMode()) heroLayer.invalidate();
         }
 
+        long now = System.currentTimeMillis();
+        long currentSec = now / 1000;
+        if (clockMode()) {
+            if (currentSec != lastClockSec) {
+                lastClockSec = currentSec;
+                secFlipStart = now;
+                heroLayer.invalidate();
+            } else if (now - secFlipStart < SEC_FLIP_MS || now - minFlipStart < MIN_FLIP_MS || now - hourFlipStart < HOUR_FLIP_MS) {
+                heroLayer.invalidate();
+            }
+        }
+
+        boolean clockFlipping = clockMode() && (now - secFlipStart < SEC_FLIP_MS || now - minFlipStart < MIN_FLIP_MS || now - hourFlipStart < HOUR_FLIP_MS);
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
                 || menuMoving || sheetMoving || toastFading || heroFading || bgFading || nightMoving || tintMoving || sheetOpen
-                || sheet.value > 0.001f || recentMoving || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty();
+                || sheet.value > 0.001f || recentMoving || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty()
+                || clockFlipping;
         idle = !busy;
-        if (busy) Choreographer.getInstance().postFrameCallback(this);
-        else Choreographer.getInstance().postFrameCallbackDelayed(this, 1000);
+        if (busy) {
+            Choreographer.getInstance().postFrameCallback(this);
+        } else if (clockMode()) {
+            long msIntoSec = System.currentTimeMillis() % 1000;
+            long nextSecDelay = Math.max(1, 1000 - msIntoSec);
+            Choreographer.getInstance().postFrameCallbackDelayed(this, nextSecDelay);
+        } else {
+            Choreographer.getInstance().postFrameCallbackDelayed(this, 1000);
+        }
     }
 
     private final int[] underState = new int[9];
@@ -1403,7 +1450,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lQuote.setColor(tone(L_FAINT, 0xB8FFFFFF));
         lTip.setColor(tone(L_INK, WHITE));
         lDate.setColor(tone(L_DIM, 0xFF98989D));
-        lClock.setColor(tone(L_INK, WHITE));
+        lClock.setColor(0xFFDADADA);
         lWeather.setColor(tone(L_DIM, 0xFF98989D));
         lClockQuote.setColor(tone(L_DIM, 0xFF98989D));
         staleQuote.setColor(tone(L_FAINT, 0x99FFFFFF));
@@ -1660,6 +1707,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // White glass by day; smoked glass at night.
         scene.liquid(c, platterRect, radius, tone(glassLight(), SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
                 tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1);
+        glassSurface.drawPanelSheenAndRim(c, platterRect, radius, dark() > 0.5f, k);
     }
 
     /** The quotes row's text and sizes, for one set of coins, prices and text size. */
@@ -1779,7 +1827,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (line != null) {
             float cap = clock ? playingClockCap : playingTabCap, gap = cap * 0.6f;
             float base = clock ? L_QUOTES_BASE * k : (L_TABBAR_TOP + L_TABBAR_H / 2) * k + cap / 2;
-            float x = clock ? MARGIN * k : right - playingTabWidth - gap - NowPlaying.barsWidth(cap);
+            float textW = text.measureText(line);
+            float x = clock ? MARGIN * k : right - textW - gap - NowPlaying.barsWidth(cap);
+            tmp.set(x - 14 * k, base - cap - 8 * k, x + NowPlaying.barsWidth(cap) + gap + textW + 14 * k, base + 8 * k);
+            glassSurface.drawPill(c, tmp, 0, dark() > 0.5f, k);
             NowPlaying.drawBars(c, x, base, cap, text, SystemClock.uptimeMillis() < barsUntil, barRect);
             c.drawText(line, x + NowPlaying.barsWidth(cap) + gap, base, text);
             text.setColor(textColor);
@@ -1927,6 +1978,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         } else {
             if (it.tile != null) roundImage(c, it.tile, it.tileShader, cell, r);
         }
+        // Liquid Glass highlight rim and specular sheen
+        glassSurface.drawCardHighlight(c, cell, r, fc, k);
     }
 
     /**
@@ -2149,6 +2202,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void drawerCard(Canvas c, RectF r) {
         drawerGlass(c, r, 30 * k, 0.72f, 0x1A000000, 10 * k);
+        glassSurface.drawPanelSheenAndRim(c, r, 30 * k, dark() > 0.5f, k);
     }
 
     private void drawDrawer(Canvas c) {
@@ -2208,6 +2262,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         String label = TextUtils.ellipsize(it.label, fitPaint, room, TextUtils.TruncateAt.END).toString();
         c.drawText(label, cx, cell.top + cell.height() * 0.8f, drawerLabel);
         drawerLabel.setTextSize(23 * k);
+        glassSurface.drawCardHighlight(c, cell, r, f, k);
     }
 
     /** Weather for your location: now (large), the next 6 hours or 5 days, and sunrise and sunset. */
@@ -2459,6 +2514,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         retarget(false);
         sheet.target = 1;
         gridDirty = true;
+        if (others == null || others.isEmpty()) {
+            appsStale = true;
+            reload();
+        }
     }
 
     private void closeSheet() {
@@ -2602,7 +2661,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float left = Math.max((w - tw) / 2f - padX, Math.min(titleRight + 40 * k, w - tw - 2 * padX - MARGIN * k));
         tmp.set(left, toastTop, left + tw + 2 * padX, toastTop + th + 2 * padY);
         int save = c.saveLayerAlpha(tmp.left - 4, tmp.top - 4, tmp.right + 4, tmp.bottom + 4, Math.round(255 * a));
-        scene.glass(c, tmp, Math.min(tmp.height() / 2, 32 * k), SMOKE, 0.55f, 0, 0, 0.02f, 1);
+        glassSurface.drawPill(c, tmp, 0, true, k);
         Symbols.draw(getContext(), c, "bell", tmp.left + padX + iconW / 2, tmp.centerY(), icon, 0xEBFFFFFF);
         c.translate(tmp.left + padX + iconW + 16 * k, tmp.top + padY);
         toast.draw(c);
@@ -2674,7 +2733,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 if (apps && keepOrder) appsStale = true;
                 setStatusItems(st);
                 setDrawerItems(d);
-                if (o != null && !sheetOpen) setOthers(o);
+                if (o != null && (!sheetOpen || others.isEmpty())) setOthers(o);
                 else if (o != null) appsStale = true;   // All Apps is open: its list comes next time
             });
         });
@@ -3012,6 +3071,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             holdArmed = false;      // another key while OK is held: no move mode, no menu
             handler.removeCallbacks(holdStart);
         }
+        if (down && code != KeyEvent.KEYCODE_BACK) {
+            handler.removeCallbacks(backHoldStart);
+        }
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (down) move(-1, 0);
@@ -3060,10 +3122,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 return true;
             case KeyEvent.KEYCODE_BACK:
                 if (down) {
-                    if (e.getRepeatCount() == 0) backDown = true;
+                    if (e.getRepeatCount() == 0) {
+                        backDown = true;
+                        backHeld = false;
+                        handler.removeCallbacks(backHoldStart);
+                        handler.postDelayed(backHoldStart, HOLD_MS);
+                    } else if (backDown && !backHeld && e.isLongPress()) {
+                        handler.removeCallbacks(backHoldStart);
+                        backHeld = true;
+                        openRecents();
+                    }
                 } else {
-                    if (backDown && !e.isCanceled()) back();
-                    backDown = false;
+                    handler.removeCallbacks(backHoldStart);
+                    if (backDown && !backHeld && !e.isCanceled()) back();
+                    backDown = backHeld = false;
                 }
                 return true;
             default:
@@ -4457,10 +4529,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         tmp.offset(0, 18 * k);
         shadowDeep.setColor(Ui.alpha(0xFF000000, tone(0.22f, 0.5f) * a));
         shadows.draw(c, tmp, r, DEEP_BLUR * k, shadowDeep);
-        fill.setColor(Ui.alpha(tone(0xFFFFFFFF, 0xFF2C2C2E), a));
-        c.drawRoundRect(menuPanel, r, r, fill);
-        border.setColor(Ui.alpha(tone(0x14000000, 0x1FFFFFFF), a));
-        c.drawRoundRect(menuPanel, r, r, border);
+        glassSurface.drawPanel(c, menuPanel, r, dark() > 0.5f, false, k);
         float x = menuPanel.left + MENU_PAD * k, y = menuPanel.top + (MENU_PAD + 34) * k;
         menuTitlePaint.setColor(Ui.alpha(tone(L_INK, WHITE), a));
         c.drawText(menuTitle, x, y, menuTitlePaint);
@@ -4509,7 +4578,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         android.graphics.ColorFilter v = veil(tone(0.32f, 0.42f) * Ui.clamp(drawer.value), blend(0xFFFFFFFF, 0xFF000000, night));
         if (bgTo == null || (fading && bgFrom == null)) {
             if (lightGradient == null) lightGradient = Ui.gradient(h, 0xFFF5F5F7, 0xFFE2E2E7);
-            if (nightGradient == null) nightGradient = Ui.gradient(h, 0xFF1C1C1E, 0xFF0B0B0D);
+            if (nightGradient == null) nightGradient = Ui.gradient(h, 0xFF000000, 0xFF000000);
             fill.setColorFilter(v);
             fill.setColor(0xFF000000);
             if (continueMode()) {
@@ -4649,24 +4718,246 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return Recs.hasKey(getContext());
     }
 
-    private void drawClock(Canvas c) {
-        float x = MARGIN * k;
-        c.drawText(dateText, x - Ui.leftBearing(lDate, dateText), L_DATE_BASE * k, lDate);
-        c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k, lClock);
-        HomeData.Weather wx = data.weather;
-        if (!Prefs.weather() || Double.isNaN(wx.temp)) return;
-        if (data.weatherAt != weatherLineAt || Prefs.version != weatherLinePrefs || !Ui.language.equals(weatherLineLanguage)) {
-            weatherLineAt = data.weatherAt;
-            weatherLinePrefs = Prefs.version;
-            weatherLineLanguage = Ui.language;
-            weatherLine = HomeData.degrees(wx.temp) + "  " + HomeData.condition(wx.code, wx.isDay) + "   "
-                    + HomeData.highLow(wx, "  ");
+    private void drawFlippingVal(Canvas c, RectF box, float rad, String oldVal, String newVal, float progress,
+            Paint textPaint, int cardBgColor) {
+        float midY = box.centerY();
+        float textBaseY = midY + Ui.halfCap(textPaint);
+        float cx = box.centerX();
+
+        if (progress >= 1f || progress <= 0f || oldVal == null || oldVal.isEmpty() || oldVal.equals(newVal)) {
+            // Static display
+            c.drawText(newVal, cx, textBaseY, textPaint);
+        } else if (progress < 0.5f) {
+            // Phase 1: Top flap folding down
+            float p = progress / 0.5f;
+            float scaleY = (float) Math.cos(p * (Math.PI / 2.0));
+
+            // Static background flaps
+            c.save();
+            c.clipRect(box.left, box.top, box.right, midY);
+            c.drawText(newVal, cx, textBaseY, textPaint);
+            c.restore();
+
+            c.save();
+            c.clipRect(box.left, midY, box.right, box.bottom);
+            c.drawText(oldVal, cx, textBaseY, textPaint);
+            fill.setColor(Ui.alpha(0xFF000000, p * 0.4f));
+            c.drawRect(box.left, midY, box.right, box.bottom, fill);
+            c.restore();
+
+            // Moving folding top flap
+            c.save();
+            c.translate(0, midY);
+            c.scale(1f, scaleY);
+            c.translate(0, -midY);
+            c.clipRect(box.left, box.top, box.right, midY);
+            fill.setColor(cardBgColor);
+            c.drawRoundRect(box, rad, rad, fill);
+            c.drawText(oldVal, cx, textBaseY, textPaint);
+            fill.setColor(Ui.alpha(0xFF000000, p * 0.65f));
+            c.drawRect(box.left, box.top, box.right, midY, fill);
+            c.restore();
+        } else {
+            // Phase 2: Bottom flap unfolding down
+            float p = (progress - 0.5f) / 0.5f;
+            float scaleY = (float) Math.sin(p * (Math.PI / 2.0));
+
+            // Static background flaps
+            c.save();
+            c.clipRect(box.left, box.top, box.right, midY);
+            c.drawText(newVal, cx, textBaseY, textPaint);
+            c.restore();
+
+            c.save();
+            c.clipRect(box.left, midY, box.right, box.bottom);
+            c.drawText(oldVal, cx, textBaseY, textPaint);
+            c.restore();
+
+            // Moving unfolding bottom flap
+            c.save();
+            c.translate(0, midY);
+            c.scale(1f, scaleY);
+            c.translate(0, -midY);
+            c.clipRect(box.left, midY, box.right, box.bottom);
+            fill.setColor(cardBgColor);
+            c.drawRoundRect(box, rad, rad, fill);
+            c.drawText(newVal, cx, textBaseY, textPaint);
+            fill.setColor(Ui.alpha(0xFF000000, (1f - p) * 0.65f));
+            c.drawRect(box.left, midY, box.right, box.bottom, fill);
+            c.restore();
         }
-        float size = 40 * k, base = L_WEATHER_BASE * k;
-        String symbol = Symbols.weather(wx.code, wx.isDay);
-        float sw = Symbols.width(getContext(), symbol, size);
-        Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lWeather), size, lWeather.getColor());
-        c.drawText(weatherLine, x + sw + 16 * k, base, lWeather);
+
+        // Horizontal flip seam groove across center
+        fill.setColor(0xFF000000);
+        float seamThick = Math.max(1.2f * k, 1.2f);
+        c.drawRect(box.left, midY - seamThick, box.right, midY + seamThick, fill);
+
+        // Side hinge notches
+        float notchW = Math.max(2.5f * k, box.width() * 0.016f);
+        float notchH = Math.max(6f * k, box.height() * 0.035f);
+        c.drawRect(box.left, midY - notchH / 2f, box.left + notchW, midY + notchH / 2f, fill);
+        c.drawRect(box.right - notchW, midY - notchH / 2f, box.right, midY + notchH / 2f, fill);
+    }
+
+    private void drawClock(Canvas c) {
+        long now = System.currentTimeMillis();
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(now);
+
+        boolean h24 = Ui.h24();
+        int h = h24 ? cal.get(Calendar.HOUR_OF_DAY) : cal.get(Calendar.HOUR);
+        if (!h24 && h == 0) h = 12;
+        String hours = String.valueOf(h);
+
+        int m = cal.get(Calendar.MINUTE);
+        String minutes = String.format(Locale.US, "%02d", m);
+
+        int s = cal.get(Calendar.SECOND);
+        String seconds = String.format(Locale.US, "%02d", s);
+
+        String ampm = h24 ? "" : (cal.get(Calendar.AM_PM) == Calendar.AM ? "AM" : "PM");
+
+        SimpleDateFormat sdfDate = new SimpleDateFormat("MMM d", Locale.getDefault());
+        String date = sdfDate.format(cal.getTime());
+        SimpleDateFormat sdfDay = new SimpleDateFormat("EEEE", Locale.getDefault());
+        String day = sdfDay.format(cal.getTime());
+
+        if (currHourStr.isEmpty()) {
+            currHourStr = prevHourStr = hours;
+            currMinStr = prevMinStr = minutes;
+            currSecStr = prevSecStr = seconds;
+            secFlipStart = minFlipStart = hourFlipStart = 0;
+        } else {
+            if (!hours.equals(currHourStr)) {
+                prevHourStr = currHourStr;
+                currHourStr = hours;
+                hourFlipStart = now;
+            }
+            if (!minutes.equals(currMinStr)) {
+                prevMinStr = currMinStr;
+                currMinStr = minutes;
+                minFlipStart = now;
+            }
+            if (!seconds.equals(currSecStr)) {
+                prevSecStr = currSecStr;
+                currSecStr = seconds;
+                secFlipStart = now;
+            }
+        }
+
+        float hourProgress = (now - hourFlipStart) < HOUR_FLIP_MS ? (float)(now - hourFlipStart) / HOUR_FLIP_MS : 1f;
+        float minProgress = (now - minFlipStart) < MIN_FLIP_MS ? (float)(now - minFlipStart) / MIN_FLIP_MS : 1f;
+        float secProgress = (now - secFlipStart) < SEC_FLIP_MS ? (float)(now - secFlipStart) / SEC_FLIP_MS : 1f;
+
+        // Three equal flip boxes: [HOURS] [MINUTES] [SECONDS]
+        float boxW = 280 * k, boxH = 360 * k, gap = 24 * k, rad = 32 * k;
+        float totalW = boxW * 3 + gap * 2;
+        float cx = w / 2f;
+        float left1 = cx - totalW / 2;
+        float left2 = left1 + boxW + gap;
+        float left3 = left2 + boxW + gap;
+        float cardTop = 240 * k, cardBottom = cardTop + boxH;
+
+        RectF hrRect = new RectF(left1, cardTop, left1 + boxW, cardBottom);
+        RectF minRect = new RectF(left2, cardTop, left2 + boxW, cardBottom);
+        RectF secRect = new RectF(left3, cardTop, left3 + boxW, cardBottom);
+
+        int cardBg = 0xFF171717;
+        float labelPadX = 30 * k;
+
+        // 1. Hour Card
+        tmp.set(hrRect);
+        tmp.offset(0, 10 * k);
+        shadow.setColor(0x70000000);
+        shadows.draw(c, tmp, rad, 24 * k, shadow);
+
+        fill.setColor(cardBg);
+        c.drawRoundRect(hrRect, rad, rad, fill);
+
+        // Thin subtle card edge highlight
+        fill.setStyle(Paint.Style.STROKE);
+        fill.setStrokeWidth(1.2f * k);
+        fill.setColor(0x18FFFFFF);
+        c.drawRoundRect(hrRect, rad, rad, fill);
+        fill.setStyle(Paint.Style.FILL);
+
+        // Hour digits with flip
+        drawFlippingVal(c, hrRect, rad, prevHourStr, currHourStr, hourProgress, lClock, cardBg);
+        glassSurface.drawCardHighlight(c, hrRect, rad, 0, k);
+
+        // Labels on Hour card: Date at top-left, AM/PM at bottom-left
+        c.drawText(date, hrRect.left + labelPadX, hrRect.top + 48 * k, lDate);
+        if (!ampm.isEmpty()) {
+            c.drawText(ampm, hrRect.left + labelPadX, hrRect.bottom - 32 * k, lDate);
+        }
+
+        // 2. Minute Card
+        tmp.set(minRect);
+        tmp.offset(0, 10 * k);
+        shadows.draw(c, tmp, rad, 24 * k, shadow);
+
+        fill.setColor(cardBg);
+        c.drawRoundRect(minRect, rad, rad, fill);
+
+        fill.setStyle(Paint.Style.STROKE);
+        fill.setStrokeWidth(1.2f * k);
+        fill.setColor(0x18FFFFFF);
+        c.drawRoundRect(minRect, rad, rad, fill);
+        fill.setStyle(Paint.Style.FILL);
+
+        // Minute digits with flip
+        drawFlippingVal(c, minRect, rad, prevMinStr, currMinStr, minProgress, lClock, cardBg);
+        glassSurface.drawCardHighlight(c, minRect, rad, 0, k);
+
+        // Weekday label at top-left of minute card
+        c.drawText(day, minRect.left + labelPadX, minRect.top + 48 * k, lDate);
+
+        // 3. Dedicated Seconds Flip Box next to Minute Card
+        tmp.set(secRect);
+        tmp.offset(0, 10 * k);
+        shadows.draw(c, tmp, rad, 24 * k, shadow);
+
+        fill.setColor(cardBg);
+        c.drawRoundRect(secRect, rad, rad, fill);
+
+        fill.setStyle(Paint.Style.STROKE);
+        fill.setStrokeWidth(1.2f * k);
+        fill.setColor(0x18FFFFFF);
+        c.drawRoundRect(secRect, rad, rad, fill);
+        fill.setStyle(Paint.Style.FILL);
+
+        // Seconds digits flipping independently
+        drawFlippingVal(c, secRect, rad, prevSecStr, currSecStr, secProgress, lClock, cardBg);
+        glassSurface.drawCardHighlight(c, secRect, rad, 0, k);
+
+        // "SEC" label at top-right of seconds card
+        String secLabel = "SEC";
+        c.drawText(secLabel, secRect.right - labelPadX - lDate.measureText(secLabel), secRect.top + 48 * k, lDate);
+
+        // 4. Weather centered below the cards
+        HomeData.Weather wx = data.weather;
+        if (Prefs.weather() && !Double.isNaN(wx.temp)) {
+            if (data.weatherAt != weatherLineAt || Prefs.version != weatherLinePrefs || !Ui.language.equals(weatherLineLanguage)) {
+                weatherLineAt = data.weatherAt;
+                weatherLinePrefs = Prefs.version;
+                weatherLineLanguage = Ui.language;
+                weatherLine = HomeData.degrees(wx.temp) + "  " + HomeData.condition(wx.code, wx.isDay) + "   "
+                        + HomeData.highLow(wx, "  ");
+            }
+            float size = 32 * k, base = cardBottom + 44 * k;
+            String symbol = Symbols.weather(wx.code, wx.isDay);
+            float sw = Symbols.width(getContext(), symbol, size);
+            float textW = lWeather.measureText(weatherLine);
+            float totalWxW = sw + 14 * k + textW;
+            float startX = cx - totalWxW / 2f;
+            Symbols.draw(getContext(), c, symbol, startX + sw / 2f, base - Ui.halfCap(lWeather), size, lWeather.getColor());
+            c.drawText(weatherLine, startX + sw + 14 * k, base, lWeather);
+        }
+
+        // 5. Next Prayer Capsule on Home Screen (dimmed low-power Liquid Glass)
+        if (prayerNamePaint != null && prayerTimePaint != null) {
+            PrayerTimes.drawNextPrayerPill(c, cx, cardBottom + 74 * k, k, prayerNamePaint, prayerTimePaint, fill, shadows, glassSurface);
+        }
     }
 
     /**
@@ -4794,6 +5085,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 fill.setColor(Ui.alpha(0xFFFFFFFF, f));
                 c.drawCircle(cell.centerX(), cell.centerY(), rad, fill);
             }
+            glassSurface.drawButtonHighlight(c, cell, rad, f, k);
             Symbols.draw(getContext(), c, it.symbol, cell.centerX(), cell.centerY(), 27 * k * s,
                     blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
             if (f > 0.01f) {

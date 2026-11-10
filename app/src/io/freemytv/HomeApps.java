@@ -63,6 +63,10 @@ final class HomeApps {
     static final int RECENTS = 8;
     /** A Home Assistant entity in the drawer (HomeAssistant): OK calls its service, nothing opens. */
     static final int HOME_ASSISTANT = 9;
+    /** Bluetooth / accessories settings. */
+    static final int BLUETOOTH = 10;
+    /** Wi-Fi / network settings. */
+    static final int WIFI = 11;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -261,20 +265,33 @@ final class HomeApps {
 
     // MARK: - Top buttons (the round ones at the top right)
 
-    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings", TOP_RECENTS = "recents", TOP_STORE = "store";
-    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS));
-    /** What can be a top button: the default three, and Recent Apps and App Store for whoever adds them. */
-    static final List<String> TOP_ALL = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS, TOP_RECENTS, TOP_STORE));
+    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings", TOP_RECENTS = "recents", TOP_STORE = "store", TOP_BLUETOOTH = "bluetooth", TOP_WIFI = "wifi";
+    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_WIFI, TOP_BLUETOOTH, TOP_INPUTS, TOP_SETTINGS));
+    /** What can be a top button: the default, and Recent Apps and App Store for whoever adds them. */
+    static final List<String> TOP_ALL = Collections.unmodifiableList(java.util.Arrays.asList(TOP_WIFI, TOP_BLUETOOTH, TOP_INPUTS, TOP_SETTINGS, TOP_RECENTS, TOP_STORE));
     static final int MAX_TOP = TOP_ALL.size();
 
-    /** The keys of the top buttons, in order (Settings > Top Buttons; by default Live TV, HDMI Inputs, Settings). */
+    /** The keys of the top buttons, in order (Settings > Top Buttons). */
     static List<String> topButtonKeys() {
         List<String> saved = Prefs.topButtons();
-        if (saved == null) return TOP_DEFAULT;
         List<String> keys = new ArrayList<>();
-        for (String key : saved) {
-            if (key.equals(TOP_RECENTS) && Prefs.recents().equals("off")) continue;   // Recent Apps is off: no button either
-            if (TOP_ALL.contains(key) && !keys.contains(key)) keys.add(key);
+        if (saved != null) {
+            for (String key : saved) {
+                if (key.equals(TOP_LIVE)) continue;   // live tv removed
+                if (key.equals(TOP_RECENTS) && Prefs.recents().equals("off")) continue;   // Recent Apps is off: no button either
+                if (TOP_ALL.contains(key) && !keys.contains(key)) keys.add(key);
+            }
+        } else {
+            keys.addAll(TOP_DEFAULT);
+        }
+        keys.remove(TOP_LIVE);
+        keys.remove(TOP_BLUETOOTH);
+        keys.remove(TOP_WIFI);
+        keys.add(0, TOP_BLUETOOTH);
+        keys.add(0, TOP_WIFI);
+        if (!keys.contains(TOP_SETTINGS)) keys.add(TOP_SETTINGS);
+        if (saved != null && (saved.contains(TOP_LIVE) || saved.isEmpty() || !saved.contains(TOP_WIFI) || !saved.contains(TOP_BLUETOOTH))) {
+            Prefs.setTopButtons(keys);
         }
         return keys;
     }
@@ -308,6 +325,8 @@ final class HomeApps {
             case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, Ui.tr("HDMI Inputs"), "hdmi");
             case TOP_RECENTS: return action(RECENTS, TOP_RECENTS, Ui.tr("Recent Apps"), "recents");
             case TOP_STORE: return action(APP, TOP_STORE, Ui.tr("App Store"), "store");
+            case TOP_BLUETOOTH: return action(BLUETOOTH, TOP_BLUETOOTH, Ui.tr("Bluetooth"), "bluetooth");
+            case TOP_WIFI: return action(WIFI, TOP_WIFI, Ui.tr("Wi-Fi"), "wifi");
             default: return action(SETTINGS, TOP_SETTINGS, Ui.tr("light|Settings"), "settings");
         }
     }
@@ -653,6 +672,15 @@ final class HomeApps {
                 break;
             case SETTINGS:
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
+                break;
+            case BLUETOOTH:
+                intent = new Intent("android.settings.SLICE_SETTINGS")
+                        .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general");
+                plain = new Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.MainSettings");
+                break;
+            case WIFI:
+                intent = new Intent(Settings.ACTION_WIFI_SETTINGS);
+                plain = new Intent().setComponent(new ComponentName("com.android.tv.settings", "com.android.tv.settings.connectivity.NetworkActivity"));
                 break;
             case ANDROID_SETTINGS:
                 intent = new Intent(Settings.ACTION_SETTINGS);

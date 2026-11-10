@@ -127,6 +127,7 @@ final class HomeMode {
         // Xiaomi
         "com.miui.tv.analytics", "com.xiaomi.statistic",                              // telemetry
         "com.mitv.tvhome.mitvplus", "com.xm.webcontent",                              // Mi TV+ promo channels, promo web content
+        "com.mitv.tvhome.atv",                                                        // Xiaomi PatchWall home launcher
         // Skyworth (VEON and other badges; MediaTek)
         "com.smartdevice.epopplayer", "com.coocaa.demonow.lightining",               // store demos (start on screen on)
         "com.smartdevice.recommendation",                                             // Coolita promo channels
@@ -411,7 +412,7 @@ final class HomeMode {
                 try (Adb adb = Adb.connect(app, 10_000, null)) {
                     if (lastUserActivity(adb) >= shown) return;   // a key since: what's in front is their choice
                     String front = resumedPackage(adb);
-                    if (front != null && tvApps.contains(front)) {
+                    if (front != null && (tvApps.contains(front) || front.contains("mitv") || front.contains("tvhome") || front.contains("tvlauncher"))) {
                         adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
                         AppLog.w("at power-on: " + front + " took the screen before any key, back to the home screen");
                         return;
@@ -476,7 +477,10 @@ final class HomeMode {
         }
         adb.shell(list.isEmpty() ? "settings delete secure enabled_accessibility_services"
                 : "settings put secure enabled_accessibility_services '" + String.join(":", list) + "'");
-        if (on) adb.shell("settings put secure accessibility_enabled 1");
+        if (on) {
+            adb.shell("settings put secure accessibility_enabled 1");
+            adb.shell("pm grant " + PKG + " android.permission.READ_LOGS");
+        }
         else if (list.isEmpty() && state(c).optBoolean("accessibilityWasOff")) adb.shell("settings put secure accessibility_enabled 0");
         AppLog.w("remote buttons service " + (on ? "on" : "off"));
     }
@@ -611,6 +615,12 @@ final class HomeMode {
             check(adb.shell("cmd package set-home-activity " + HOME_ACTIVITY), "Success",
                     Ui.tr("Android didn't accept the new home screen"));
             if (Config.SCREENSAVER) adb.shell("settings put secure screensaver_components " + DREAM);
+            if (RemoteKeys.XIAOMI || RemoteKeys.XIAOMI_AFKR0) {
+                try {
+                    adb.shell("settings put global set_patchwall_default 0");
+                    adb.shell("settings put global patchwall_enable false");
+                } catch (Exception ignored) {}
+            }
             boolean jmOurs = !jm || setJmHome(adb, PKG);
             if (!jmOurs) AppLog.w("JmLauncher keeps the Home button: " + JM_HOME + " didn't take");
             JSONObject started = state(c);
@@ -1043,6 +1053,12 @@ final class HomeMode {
                     fixed.add(Ui.tr("the home screen"));
                 }
                 wakeWatch(adb, !reverted);   // again after a restart, which ends it (running already: left alone)
+                if (RemoteKeys.XIAOMI || RemoteKeys.XIAOMI_AFKR0) {
+                    try {
+                        adb.shell("settings put global set_patchwall_default 0");
+                        adb.shell("settings put global patchwall_enable false");
+                    } catch (Exception ignored) {}
+                }
                 // Whole component names: ".ScreensaverAlone" (Android 11 to 12L) contains ".Screensaver" (the others).
                 List<String> savers = Arrays.asList(adb.shell("settings get secure screensaver_components").trim().split(","));
                 if (Config.SCREENSAVER && !reverted && !savers.contains(DREAM)) {
