@@ -28,12 +28,6 @@ public class RemoteKeyService extends AccessibilityService {
     private volatile boolean logcatStopped = false;
     private long lastAllAppsTrigger = 0;
     private long lastYouTubeTrigger = 0;
-    private AudioManager audioManager;
-    private long lastVolUpTime = 0;
-    private int volUpStreak = 0;
-    private long lastVolDownTime = 0;
-    private int volDownStreak = 0;
-    private long lastVolDownClickTime = 0;
 
     @Override
     public void onCreate() {
@@ -85,80 +79,6 @@ public class RemoteKeyService extends AccessibilityService {
                                 lastYouTubeTrigger = now;
                                 AppLog.w("RemoteKeyService: captured YouTube key from ADB stream: " + line);
                                 openYouTube();
-                            }
-                        }
-                        if (line.contains("handleAction24")) {
-                            long now = SystemClock.uptimeMillis();
-                            long dt = now - lastVolUpTime;
-                            lastVolUpTime = now;
-                            volDownStreak = 0;
-
-                            if (audioManager == null) {
-                                audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-                            }
-                            if (audioManager != null) {
-                                try {
-                                    if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
-                                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI);
-                                    }
-                                } catch (Throwable ignored) {}
-
-                                if (dt < 320) {
-                                    volUpStreak++;
-                                } else {
-                                    volUpStreak = 0;
-                                }
-
-                                if (volUpStreak >= 1) {
-                                    int boost = Math.min(3, 1 + volUpStreak / 2);
-                                    for (int i = 0; i < boost; i++) {
-                                        audioManager.adjustSuggestedStreamVolume(
-                                            AudioManager.ADJUST_RAISE,
-                                            AudioManager.USE_DEFAULT_STREAM_TYPE,
-                                            AudioManager.FLAG_SHOW_UI
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        if (line.contains("handleAction25")) {
-                            long now = SystemClock.uptimeMillis();
-                            long dt = now - lastVolDownTime;
-                            lastVolDownTime = now;
-                            volUpStreak = 0;
-
-                            if (audioManager == null) {
-                                audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-                            }
-                            if (audioManager != null) {
-                                if (dt < 320) {
-                                    volDownStreak++;
-                                } else {
-                                    volDownStreak = 0;
-                                }
-
-                                if (volDownStreak >= 1) {
-                                    int boost = Math.min(3, 1 + volDownStreak / 2);
-                                    for (int i = 0; i < boost; i++) {
-                                        audioManager.adjustSuggestedStreamVolume(
-                                            AudioManager.ADJUST_LOWER,
-                                            AudioManager.USE_DEFAULT_STREAM_TYPE,
-                                            AudioManager.FLAG_SHOW_UI
-                                        );
-                                    }
-                                } else {
-                                    long clickInterval = now - lastVolDownClickTime;
-                                    lastVolDownClickTime = now;
-                                    if (clickInterval > 140 && clickInterval < 450) {
-                                        try {
-                                            audioManager.adjustStreamVolume(
-                                                AudioManager.STREAM_MUSIC,
-                                                AudioManager.ADJUST_TOGGLE_MUTE,
-                                                AudioManager.FLAG_SHOW_UI
-                                            );
-                                        } catch (Throwable ignored) {}
-                                    }
-                                }
                             }
                         }
                     });
