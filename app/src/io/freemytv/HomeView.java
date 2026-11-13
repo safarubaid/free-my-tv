@@ -341,6 +341,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String weatherLineLanguage = "";
     private long clockMinute = -1;
     // Flip clock state for aflipclock.com style
+    private final Calendar clockCal = Calendar.getInstance();
+    private final SimpleDateFormat sdfDate = new SimpleDateFormat("MMM d", Locale.getDefault());
+    private final SimpleDateFormat sdfDay = new SimpleDateFormat("EEEE", Locale.getDefault());
+    private final RectF hrRect = new RectF(), minRect = new RectF(), secRect = new RectF();
+    private String cachedClockDate = "", cachedClockDay = "";
+    private long cachedClockDayTime = -1;
     private String prevSecStr = "", currSecStr = "";
     private String prevMinStr = "", currMinStr = "";
     private String prevHourStr = "", currHourStr = "";
@@ -4801,26 +4807,28 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void drawClock(Canvas c) {
         long now = System.currentTimeMillis();
-        Calendar cal = Calendar.getInstance();
-        cal.setTimeInMillis(now);
+        clockCal.setTimeInMillis(now);
 
         boolean h24 = Ui.h24();
-        int h = h24 ? cal.get(Calendar.HOUR_OF_DAY) : cal.get(Calendar.HOUR);
+        int h = h24 ? clockCal.get(Calendar.HOUR_OF_DAY) : clockCal.get(Calendar.HOUR);
         if (!h24 && h == 0) h = 12;
         String hours = String.valueOf(h);
 
-        int m = cal.get(Calendar.MINUTE);
-        String minutes = String.format(Locale.US, "%02d", m);
+        int m = clockCal.get(Calendar.MINUTE);
+        String minutes = (m < 10) ? ("0" + m) : String.valueOf(m);
 
-        int s = cal.get(Calendar.SECOND);
-        String seconds = String.format(Locale.US, "%02d", s);
+        int s = clockCal.get(Calendar.SECOND);
+        String seconds = (s < 10) ? ("0" + s) : String.valueOf(s);
 
-        String ampm = h24 ? "" : (cal.get(Calendar.AM_PM) == Calendar.AM ? "AM" : "PM");
+        String ampm = h24 ? "" : (clockCal.get(Calendar.AM_PM) == Calendar.AM ? "AM" : "PM");
 
-        SimpleDateFormat sdfDate = new SimpleDateFormat("MMM d", Locale.getDefault());
-        String date = sdfDate.format(cal.getTime());
-        SimpleDateFormat sdfDay = new SimpleDateFormat("EEEE", Locale.getDefault());
-        String day = sdfDay.format(cal.getTime());
+        if (now - cachedClockDayTime > 60_000L || cachedClockDate.isEmpty()) {
+            cachedClockDayTime = now;
+            cachedClockDate = sdfDate.format(clockCal.getTime());
+            cachedClockDay = sdfDay.format(clockCal.getTime());
+        }
+        String date = cachedClockDate;
+        String day = cachedClockDay;
 
         if (currHourStr.isEmpty()) {
             currHourStr = prevHourStr = hours;
@@ -4858,9 +4866,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float left3 = left2 + boxW + gap;
         float cardTop = 240 * k, cardBottom = cardTop + boxH;
 
-        RectF hrRect = new RectF(left1, cardTop, left1 + boxW, cardBottom);
-        RectF minRect = new RectF(left2, cardTop, left2 + boxW, cardBottom);
-        RectF secRect = new RectF(left3, cardTop, left3 + boxW, cardBottom);
+        hrRect.set(left1, cardTop, left1 + boxW, cardBottom);
+        minRect.set(left2, cardTop, left2 + boxW, cardBottom);
+        secRect.set(left3, cardTop, left3 + boxW, cardBottom);
 
         int cardBg = 0xFF171717;
         float labelPadX = 30 * k;
@@ -4883,7 +4891,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
         // Hour digits with flip
         drawFlippingVal(c, hrRect, rad, prevHourStr, currHourStr, hourProgress, lClock, cardBg);
-        glassSurface.drawCardHighlight(c, hrRect, rad, 0, k);
 
         // Labels on Hour card: Date at top-left, AM/PM at bottom-left
         c.drawText(date, hrRect.left + labelPadX, hrRect.top + 48 * k, lDate);
@@ -4907,7 +4914,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
         // Minute digits with flip
         drawFlippingVal(c, minRect, rad, prevMinStr, currMinStr, minProgress, lClock, cardBg);
-        glassSurface.drawCardHighlight(c, minRect, rad, 0, k);
 
         // Weekday label at top-left of minute card
         c.drawText(day, minRect.left + labelPadX, minRect.top + 48 * k, lDate);
@@ -4928,7 +4934,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
         // Seconds digits flipping independently
         drawFlippingVal(c, secRect, rad, prevSecStr, currSecStr, secProgress, lClock, cardBg);
-        glassSurface.drawCardHighlight(c, secRect, rad, 0, k);
 
         // "SEC" label at top-right of seconds card
         String secLabel = "SEC";

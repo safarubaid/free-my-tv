@@ -1,9 +1,5 @@
 package io.freemytv;
 
-import android.graphics.Color;
-import android.graphics.LinearGradient;
-import android.graphics.Shader;
-
 /**
  * Design tokens for Apple-inspired Liquid Glass visual styling.
  * Designed for 10-foot viewing (1920x1080 baseline, scales via k = w / 1920f).
@@ -57,29 +53,5 @@ public final class GlassTokens {
     // Safe Areas (5% TV overscan margin on 1920x1080)
     public static final float OVERSCAN_MARGIN_X = 96f;         // 5% of 1920
     public static final float OVERSCAN_MARGIN_Y = 54f;         // 5% of 1080
-
-    /**
-     * Create a pre-baked vertical specular sheen gradient for a given height.
-     */
-    public static LinearGradient createSheen(float height) {
-        return new LinearGradient(
-                0, 0, 0, Math.max(1f, height * 0.22f),
-                new int[] {SHEEN_CREST, SHEEN_BODY, SHEEN_FADE},
-                new float[] {0f, 0.45f, 1f},
-                Shader.TileMode.CLAMP
-        );
-    }
-
-    /**
-     * Create a directional highlight border gradient (brighter top-left, subtler bottom-right).
-     */
-    public static LinearGradient createRefractionBorder(float width, float height) {
-        return new LinearGradient(
-                0, 0, width, height,
-                new int[] {BORDER_SPECULAR_TOP, BORDER_SPECULAR_MID, BORDER_SHADOW_BOTTOM},
-                new float[] {0f, 0.45f, 1f},
-                Shader.TileMode.CLAMP
-        );
-    }
 }
 

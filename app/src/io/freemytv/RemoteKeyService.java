@@ -19,8 +19,6 @@ import java.io.InputStreamReader;
  */
 public class RemoteKeyService extends AccessibilityService {
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private AudioManager audioManager;
-    private int heldVolumeKey = 0;
     private boolean backDown = false;
     private boolean backHeld = false;
     private boolean homeDown = false;
@@ -29,6 +27,7 @@ public class RemoteKeyService extends AccessibilityService {
     private Thread logcatThread;
     private volatile boolean logcatStopped = false;
     private long lastAllAppsTrigger = 0;
+    private long lastYouTubeTrigger = 0;
 
     @Override
     public void onCreate() {
@@ -62,7 +61,7 @@ public class RemoteKeyService extends AccessibilityService {
                     adb = Adb.connect(RemoteKeyService.this, 10_000, null);
                     AppLog.w("RemoteKeyService: ADB stream connected to 127.0.0.1:5555");
                     final long startedAt = SystemClock.uptimeMillis();
-                    adb.streamShell("logcat -b system -v brief -s ActivityTaskManager:I MiTVWindowPolicyInjector:D", line -> {
+                    adb.streamShell("logcat -b system -v brief -T 1 -s ActivityTaskManager:I MiTVWindowPolicyInjector:D", line -> {
                         if (SystemClock.uptimeMillis() - startedAt < 1000) {
                             return; // Skip initial historical buffer
                         }
@@ -72,6 +71,14 @@ public class RemoteKeyService extends AccessibilityService {
                                 lastAllAppsTrigger = now;
                                 AppLog.w("RemoteKeyService: captured dedicated Apps key from ADB stream: " + line);
                                 openAllApps();
+                            }
+                        }
+                        if (line.contains("handleAction190")) {
+                            long now = SystemClock.uptimeMillis();
+                            if (now - lastYouTubeTrigger > 500) {
+                                lastYouTubeTrigger = now;
+                                AppLog.w("RemoteKeyService: captured YouTube key from ADB stream: " + line);
+                                openYouTube();
                             }
                         }
                     });
@@ -102,32 +109,27 @@ public class RemoteKeyService extends AccessibilityService {
         }
     }
 
+    private void openYouTube() {
+        launchApp("com.google.android.youtube.tv", KeyEvent.KEYCODE_BUTTON_3);
+    }
 
-
-    private final Runnable volumeRepeat = new Runnable() {
-        @Override public void run() {
-            if (audioManager == null) {
-                audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            }
-            if (audioManager != null) {
-                if (heldVolumeKey == KeyEvent.KEYCODE_VOLUME_UP) {
-                    audioManager.adjustSuggestedStreamVolume(
-                        AudioManager.ADJUST_RAISE,
-                        AudioManager.USE_DEFAULT_STREAM_TYPE,
-                        AudioManager.FLAG_SHOW_UI
-                    );
-                    handler.postDelayed(this, 75);
-                } else if (heldVolumeKey == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                    audioManager.adjustSuggestedStreamVolume(
-                        AudioManager.ADJUST_LOWER,
-                        AudioManager.USE_DEFAULT_STREAM_TYPE,
-                        AudioManager.FLAG_SHOW_UI
-                    );
-                    handler.postDelayed(this, 75);
-                }
+    private void launchApp(String defaultPkg, int keyCode) {
+        String pkg = Prefs.keyApp(keyCode);
+        if (pkg == null || pkg.isEmpty() || pkg.equals(HomeMode.PKG) || pkg.equals("com.android.vending")) {
+            pkg = defaultPkg;
+        }
+        Intent intent = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
+        if (intent == null) {
+            intent = getPackageManager().getLaunchIntentForPackage(pkg);
+        }
+        if (intent != null) {
+            try {
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception ex) {
+                AppLog.w("failed to launch " + pkg + ": " + ex.getMessage());
             }
         }
-    };
+    }
 
     private final Runnable backHold = () -> {
         backHeld = true;
@@ -159,46 +161,30 @@ public class RemoteKeyService extends AccessibilityService {
         int code = event.getKeyCode();
         AppLog.w("RemoteKeyService key: " + code + " action=" + event.getAction());
 
-        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (event.getRepeatCount() == 0) {
-                    heldVolumeKey = code;
-                    handler.removeCallbacks(volumeRepeat);
-                    handler.postDelayed(volumeRepeat, 350);
-                } else {
-                    handler.removeCallbacks(volumeRepeat);
-                }
-                return false;
-            } else if (event.getAction() == KeyEvent.ACTION_UP) {
-                heldVolumeKey = 0;
-                handler.removeCallbacks(volumeRepeat);
-                return false;
-            }
-        }
-
-        if (code == KeyEvent.KEYCODE_VOLUME_MUTE) {
+        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN || code == KeyEvent.KEYCODE_VOLUME_MUTE) {
             return false;
         }
 
-        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (event.getRepeatCount() == 0) {
-                    heldVolumeKey = code;
-                    handler.removeCallbacks(volumeRepeat);
-                    handler.postDelayed(volumeRepeat, 350);
-                } else {
-                    handler.removeCallbacks(volumeRepeat);
-                }
-                return false;
-            } else if (event.getAction() == KeyEvent.ACTION_UP) {
-                heldVolumeKey = 0;
-                handler.removeCallbacks(volumeRepeat);
-                return false;
+        // Dedicated app buttons on Xiaomi and TV remotes
+        if (code == KeyEvent.KEYCODE_BUTTON_3 || code == KeyEvent.KEYCODE_BUTTON_16 || code == 190 || code == 203) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                launchApp("com.google.android.youtube.tv", code);
             }
+            return true;
         }
 
-        if (code == KeyEvent.KEYCODE_VOLUME_MUTE) {
-            return false;
+        if (code == KeyEvent.KEYCODE_BUTTON_7 || code == 194) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                launchApp("com.amazon.amazonvideo.livingroom", code);
+            }
+            return true;
+        }
+
+        if (code == KeyEvent.KEYCODE_BUTTON_6 || code == 193) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                launchApp("com.netflix.ninja", code);
+            }
+            return true;
         }
         if (code == KeyEvent.KEYCODE_BACK) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {

@@ -278,12 +278,7 @@ final class PrayerTimes {
         c.drawRoundRect(tileBox, pillRad, pillRad, fillPaint);
         fillPaint.setStyle(Paint.Style.FILL);
 
-        // 4. Liquid glass highlight sheen
-        if (glassSurface != null) {
-            glassSurface.drawCardHighlight(c, tileBox, pillRad, 0, k);
-        }
-
-        // 5. Text elements
+        // 4. Text elements
         float textY = topY + pillH / 2f + Ui.halfCap(timePaint);
         float x = left + padX;
 
@@ -363,12 +358,7 @@ final class PrayerTimes {
             c.drawRoundRect(tileBox, tileRad, tileRad, fillPaint);
             fillPaint.setStyle(Paint.Style.FILL);
 
-            // 4. Liquid Glass Sheen Highlight
-            if (glassSurface != null) {
-                glassSurface.drawCardHighlight(c, tileBox, tileRad, 0, k);
-            }
-
-            // 5. Prayer Name (Top Line)
+            // 4. Prayer Name (Top Line)
             float midX = tileBox.centerX();
             float nameY = tileBox.top + 28 * k;
             if (p.isNext) {
