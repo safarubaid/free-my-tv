@@ -33,6 +33,7 @@ public class RemoteKeyService extends AccessibilityService {
     private int volUpStreak = 0;
     private long lastVolDownTime = 0;
     private int volDownStreak = 0;
+    private long lastVolDownClickTime = 0;
 
     @Override
     public void onCreate() {
@@ -96,10 +97,9 @@ public class RemoteKeyService extends AccessibilityService {
                                 audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
                             }
                             if (audioManager != null) {
-                                final int flags = AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND | 4096;
                                 try {
                                     if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
-                                        audioManager.adjustSuggestedStreamVolume(100, AudioManager.USE_DEFAULT_STREAM_TYPE, flags);
+                                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI);
                                     }
                                 } catch (Throwable ignored) {}
 
@@ -115,7 +115,7 @@ public class RemoteKeyService extends AccessibilityService {
                                         audioManager.adjustSuggestedStreamVolume(
                                             AudioManager.ADJUST_RAISE,
                                             AudioManager.USE_DEFAULT_STREAM_TYPE,
-                                            flags
+                                            AudioManager.FLAG_SHOW_UI
                                         );
                                     }
                                 }
@@ -131,7 +131,6 @@ public class RemoteKeyService extends AccessibilityService {
                                 audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
                             }
                             if (audioManager != null) {
-                                final int flags = AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND | 4096;
                                 if (dt < 320) {
                                     volDownStreak++;
                                 } else {
@@ -144,8 +143,20 @@ public class RemoteKeyService extends AccessibilityService {
                                         audioManager.adjustSuggestedStreamVolume(
                                             AudioManager.ADJUST_LOWER,
                                             AudioManager.USE_DEFAULT_STREAM_TYPE,
-                                            flags
+                                            AudioManager.FLAG_SHOW_UI
                                         );
+                                    }
+                                } else {
+                                    long clickInterval = now - lastVolDownClickTime;
+                                    lastVolDownClickTime = now;
+                                    if (clickInterval > 140 && clickInterval < 450) {
+                                        try {
+                                            audioManager.adjustStreamVolume(
+                                                AudioManager.STREAM_MUSIC,
+                                                AudioManager.ADJUST_TOGGLE_MUTE,
+                                                AudioManager.FLAG_SHOW_UI
+                                            );
+                                        } catch (Throwable ignored) {}
                                     }
                                 }
                             }
